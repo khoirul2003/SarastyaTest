@@ -1,0 +1,14 @@
+[Dd]ebug/
+[Rr]elease/
+**/bin/
+**/obj/
+
+Logs/
+.vs/
+.vscode/
+*.user
+*.suo
+
+*.db
+*.env
+appsettings.Development.json
