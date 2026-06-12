@@ -32,6 +32,15 @@ class ProjectService {
     return response.statusCode == 200 || response.statusCode == 201;
   }
 
+  Future<bool> updateProject(int id, String name, String description) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/$id'),
+      headers: await _getHeaders(),
+      body: jsonEncode({'id': id, 'name': name, 'description': description}),
+    );
+    return response.statusCode == 200 || response.statusCode == 204;
+  }
+
   Future<bool> deleteProject(int id) async {
     final response = await http.delete(Uri.parse('$baseUrl/$id'), headers: await _getHeaders());
     return response.statusCode == 200;

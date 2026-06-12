@@ -90,7 +90,7 @@ class _MyAppState extends State<MyApp> {
   }
 }
 
-// ======================== PANEL TAB PROJECT ========================
+// ======================== PANEL TAB PROJECT (WITH EDIT) ========================
 class ProjectTabContent extends StatefulWidget {
   const ProjectTabContent({super.key});
   @override
@@ -102,6 +102,7 @@ class _ProjectTabContentState extends State<ProjectTabContent> {
   final _nameController = TextEditingController();
   final _descController = TextEditingController();
   List<dynamic> _projects = [];
+  int? _editingProjectId; // Tracker ID Project yang diedit
 
   @override
   void initState() {
@@ -113,20 +114,36 @@ class _ProjectTabContentState extends State<ProjectTabContent> {
     try {
       final data = await _projectService.getAllProjects();
       setState(() => _projects = data);
-    } catch (e) {
-      // Handle error silent
-    }
+    } catch (e) {}
   }
 
-  void _addProject() async {
+  void _saveProject() async {
     if (_nameController.text.isEmpty || _descController.text.isEmpty) return;
-    final success = await _projectService.createProject(_nameController.text, _descController.text);
+
+    bool success;
+    if (_editingProjectId == null) {
+      // Create baru
+      success = await _projectService.createProject(_nameController.text, _descController.text);
+    } else {
+      // Update data lama
+      success = await _projectService.updateProject(_editingProjectId!, _nameController.text, _descController.text);
+    }
+
     if (success) {
       _nameController.clear();
       _descController.clear();
+      setState(() => _editingProjectId = null);
       _loadProjects();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Project berhasil dibuat!')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Data Project berhasil diperbarui!')));
     }
+  }
+
+  void _startEdit(dynamic project) {
+    setState(() {
+      _editingProjectId = project['id'];
+      _nameController.text = project['name'];
+      _descController.text = project['description'];
+    });
   }
 
   @override
@@ -140,15 +157,39 @@ class _ProjectTabContentState extends State<ProjectTabContent> {
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Text(
+                    _editingProjectId == null ? 'Buat Project Baru' : '⚡ Edit Mode: Project ID ${_editingProjectId}',
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo),
+                  ),
+                  const SizedBox(height: 10),
                   TextField(controller: _nameController, decoration: const InputDecoration(labelText: 'Nama Project', border: OutlineInputBorder())),
                   const SizedBox(height: 10),
                   TextField(controller: _descController, decoration: const InputDecoration(labelText: 'Deskripsi Project', border: OutlineInputBorder())),
                   const SizedBox(height: 12),
-                  ElevatedButton(
-                    onPressed: _addProject,
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4F46E5), minimumSize: const Size.fromHeight(45)),
-                    child: const Text('Tambah Project', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: _saveProject,
+                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4F46E5), minimumSize: const Size.fromHeight(45)),
+                          child: Text(_editingProjectId == null ? 'Tambah Project' : 'Simpan Perubahan', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                      if (_editingProjectId != null) ...[
+                        const SizedBox(width: 10),
+                        ElevatedButton(
+                          onPressed: () {
+                            _nameController.clear();
+                            _descController.clear();
+                            setState(() => _editingProjectId = null);
+                          },
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.grey),
+                          child: const Text('Batal', style: TextStyle(color: Colors.white)),
+                        )
+                      ]
+                    ],
                   )
                 ],
               ),
@@ -168,11 +209,20 @@ class _ProjectTabContentState extends State<ProjectTabContent> {
                         child: ListTile(
                           title: Text(p['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
                           subtitle: Text("${p['description']} (ID: ${p['id']})"),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () async {
-                              if (await _projectService.deleteProject(p['id'])) _loadProjects();
-                            },
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit, color: Colors.orange),
+                                onPressed: () => _startEdit(p),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                onPressed: () async {
+                                  if (await _projectService.deleteProject(p['id'])) _loadProjects();
+                                },
+                              ),
+                            ],
                           ),
                         ),
                       );
@@ -185,7 +235,7 @@ class _ProjectTabContentState extends State<ProjectTabContent> {
   }
 }
 
-// ======================== PANEL TAB TASK (RELASIONAL) ========================
+// ======================== PANEL TAB TASK (WITH EDIT) ========================
 class TaskTabContent extends StatefulWidget {
   const TaskTabContent({super.key});
   @override
@@ -201,6 +251,7 @@ class _TaskTabContentState extends State<TaskTabContent> {
   List<dynamic> _projects = [];
   List<dynamic> _tasks = [];
   String? _selectedProjectId;
+  int? _editingTaskId; // Tracker ID Task yang diedit
 
   @override
   void initState() {
@@ -219,23 +270,50 @@ class _TaskTabContentState extends State<TaskTabContent> {
     } catch (e) {}
   }
 
-  void _addTask() async {
+  void _saveTask() async {
     if (_titleController.text.isEmpty || _descController.text.isEmpty || _selectedProjectId == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ Lengkapi form dan pilih project!')));
       return;
     }
-    final success = await _taskService.createTask(
-      _titleController.text,
-      _descController.text,
-      int.parse(_selectedProjectId!),
-    );
+
+    bool success;
+    if (_editingTaskId == null) {
+      // Create baru
+      success = await _taskService.createTask(
+        _titleController.text,
+        _descController.text,
+        int.parse(_selectedProjectId!),
+      );
+    } else {
+      // Update data lama
+      success = await _taskService.updateTask(
+        _editingTaskId!,
+        _titleController.text,
+        _descController.text,
+        false, // default false isCompleted
+        int.parse(_selectedProjectId!),
+      );
+    }
+
     if (success) {
       _titleController.clear();
       _descController.clear();
-      setState(() => _selectedProjectId = null);
+      setState(() {
+        _selectedProjectId = null;
+        _editingTaskId = null;
+      });
       _loadAllData();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Task berelasi sukses ditambahkan!')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Data Task berhasil disimpan!')));
     }
+  }
+
+  void _startEditTask(dynamic task) {
+    setState(() {
+      _editingTaskId = task['id'];
+      _titleController.text = task['title'];
+      _descController.text = task['description'];
+      _selectedProjectId = task['projectId'].toString();
+    });
   }
 
   @override
@@ -249,7 +327,13 @@ class _TaskTabContentState extends State<TaskTabContent> {
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Text(
+                    _editingTaskId == null ? 'Tambah Task Baru' : '⚡ Edit Mode: Task ID ${_editingTaskId}',
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal),
+                  ),
+                  const SizedBox(height: 10),
                   DropdownButtonFormField<String>(
                     value: _selectedProjectId,
                     hint: const Text('-- Pilih Relasi Project --'),
@@ -267,10 +351,31 @@ class _TaskTabContentState extends State<TaskTabContent> {
                   const SizedBox(height: 10),
                   TextField(controller: _descController, decoration: const InputDecoration(labelText: 'Detail Deskripsi Task', border: OutlineInputBorder())),
                   const SizedBox(height: 12),
-                  ElevatedButton(
-                    onPressed: _addTask,
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), minimumSize: const Size.fromHeight(45)),
-                    child: const Text('Tambah Task Baru', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: _saveTask,
+                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), minimumSize: const Size.fromHeight(45)),
+                          child: Text(_editingTaskId == null ? 'Tambah Task Baru' : 'Simpan Perubahan Task', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                      if (_editingTaskId != null) ...[
+                        const SizedBox(width: 10),
+                        ElevatedButton(
+                          onPressed: () {
+                            _titleController.clear();
+                            _descController.clear();
+                            setState(() {
+                              _selectedProjectId = null;
+                              _editingTaskId = null;
+                            });
+                          },
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.grey),
+                          child: const Text('Batal', style: TextStyle(color: Colors.white)),
+                        )
+                      ]
+                    ],
                   )
                 ],
               ),
@@ -299,17 +404,26 @@ class _TaskTabContentState extends State<TaskTabContent> {
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                 decoration: BoxDecoration(color: const Color(0xFFEEF2FF), borderRadius: BorderRadius.circular(12)),
                                 child: Text(
-                                  "📌 Project: ${parentProject != null ? parentProject['name'] : 'ID ' + t['projectId'].toString()}",
+                                  "Project: ${parentProject != null ? parentProject['name'] : 'ID ' + t['projectId'].toString()}",
                                   style: const TextStyle(fontSize: 11, color: Color(0xFF4F46E5), fontWeight: FontWeight.bold),
                                 ),
                               )
                             ],
                           ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () async {
-                              if (await _taskService.deleteTask(t['id'])) _loadAllData();
-                            },
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit, color: Colors.orange),
+                                onPressed: () => _startEditTask(t),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                onPressed: () async {
+                                  if (await _taskService.deleteTask(t['id'])) _loadAllData();
+                                },
+                              ),
+                            ],
                           ),
                         ),
                       );

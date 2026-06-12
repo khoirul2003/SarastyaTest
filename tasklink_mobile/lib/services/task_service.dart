@@ -15,7 +15,10 @@ class TaskService {
   }
 
   Future<List<dynamic>> getAllTasks() async {
-    final response = await http.get(Uri.parse(baseUrl), headers: await _getHeaders());
+    final response = await http.get(
+      Uri.parse(baseUrl),
+      headers: await _getHeaders(),
+    );
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
@@ -23,7 +26,11 @@ class TaskService {
     }
   }
 
-  Future<bool> createTask(String title, String description, int projectId) async {
+  Future<bool> createTask(
+    String title,
+    String description,
+    int projectId,
+  ) async {
     final response = await http.post(
       Uri.parse(baseUrl),
       headers: await _getHeaders(),
@@ -31,14 +38,33 @@ class TaskService {
         'title': title,
         'description': description,
         'isCompleted': false,
-        'projectId': projectId
+        'projectId': projectId,
       }),
     );
     return response.statusCode == 200 || response.statusCode == 201;
   }
 
+  // 4. UPDATE TASK
+  Future<bool> updateTask(int id, String title, String description, bool isCompleted, int projectId) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/$id'),
+      headers: await _getHeaders(),
+      body: jsonEncode({
+        'id': id,
+        'title': title,
+        'description': description,
+        'isCompleted': isCompleted,
+        'projectId': projectId
+      }),
+    );
+    return response.statusCode == 200 || response.statusCode == 204;
+  }
+
   Future<bool> deleteTask(int id) async {
-    final response = await http.delete(Uri.parse('$baseUrl/$id'), headers: await _getHeaders());
+    final response = await http.delete(
+      Uri.parse('$baseUrl/$id'),
+      headers: await _getHeaders(),
+    );
     return response.statusCode == 200;
   }
 }
