@@ -7,16 +7,18 @@ import { taskService } from './services/taskService';
 const MainApp = () => {
     const { isAuthenticated, username, logout } = useAuth();
     
-    
+    // State Projects
     const [projects, setProjects] = useState([]);
     const [projectName, setProjectName] = useState('');
     const [projectDesc, setProjectDesc] = useState('');
+    const [editingProjectId, setEditingProjectId] = useState(null);
     
-    
+    // State Tasks
     const [tasks, setTasks] = useState([]);
     const [taskTitle, setTaskTitle] = useState('');
     const [taskDesc, setTaskDesc] = useState('');
     const [selectedProjectId, setSelectedProjectId] = useState('');
+    const [editingTaskId, setEditingTaskId] = useState(null);
 
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
@@ -38,34 +40,93 @@ const MainApp = () => {
         }
     };
 
-    const handleCreateProject = async (e) => {
+    const handleSaveProject = async (e) => {
         e.preventDefault();
+        setLoading(true);
         try {
-            await projectService.create({ name: projectName, description: projectDesc });
+            if (editingProjectId === null) {
+                await projectService.create({ name: projectName, description: projectDesc });
+            } else {
+                // UPDATE (PUT) Project
+                const token = localStorage.getItem('token');
+                const response = await fetch(`http://localhost:5084/api/Projects/${editingProjectId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ id: editingProjectId, name: projectName, description: projectDesc })
+                });
+                if (!response.ok) throw new Error('Gagal memperbarui project');
+            }
             setProjectName('');
             setProjectDesc('');
+            setEditingProjectId(null);
             loadAllData();
-        } catch (err) { setError(err.message); }
+        } catch (err) { 
+            setError(err.message); 
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const handleCreateTask = async (e) => {
+    const handleSaveTask = async (e) => {
         e.preventDefault();
         if (!selectedProjectId) {
             alert('Pilih project terlebih dahulu!');
             return;
         }
+        setLoading(true);
         try {
-            await taskService.create({
-                title: taskTitle,
-                description: taskDesc,
-                isCompleted: false,
-                projectId: parseInt(selectedProjectId)
-            });
+            if (editingTaskId === null) {
+                await taskService.create({
+                    title: taskTitle,
+                    description: taskDesc,
+                    isCompleted: false,
+                    projectId: parseInt(selectedProjectId)
+                });
+            } else {
+                // UPDATE (PUT) Task Berelasi
+                const token = localStorage.getItem('token');
+                const response = await fetch(`http://localhost:5084/api/Tasks/${editingTaskId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        id: editingTaskId,
+                        title: taskTitle,
+                        description: taskDesc,
+                        isCompleted: false,
+                        projectId: parseInt(selectedProjectId)
+                    })
+                });
+                if (!response.ok) throw new Error('Gagal memperbarui task');
+            }
             setTaskTitle('');
             setTaskDesc('');
             setSelectedProjectId('');
+            setEditingTaskId(null);
             loadAllData();
-        } catch (err) { setError(err.message); }
+        } catch (err) { 
+            setError(err.message); 
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const startEditProject = (p) => {
+        setEditingProjectId(p.id);
+        setProjectName(p.name);
+        setProjectDesc(p.description);
+    };
+
+    const startEditTask = (t) => {
+        setEditingTaskId(t.id);
+        setTaskTitle(t.title);
+        setTaskDesc(t.description);
+        setSelectedProjectId(t.projectId.toString());
     };
 
     const handleDeleteProject = async (id) => {
@@ -93,16 +154,22 @@ const MainApp = () => {
             </header>
 
             <main style={styles.main}>
-                {error && <div style={styles.errorBadge}>⚠️ {error}</div>}
+                {error && <div style={styles.errorBadge}>Gagal memproses data: {error}</div>}
 
                 <div style={styles.workspaceGrid}>
-                    {/* KOLOM KIRI: MANAGEMENT PROJECT */}
+                    {/* MODUL PROJECT */}
                     <div style={styles.sectionCard}>
                         <h2 style={styles.sectionTitle}>Modul Project</h2>
-                        <form onSubmit={handleCreateProject} style={styles.form}>
+                        <form onSubmit={handleSaveProject} style={styles.form}>
+                            <div style={{fontSize: '13px', fontWeight: 'bold', color: '#4F46E5'}}>
+                                {editingProjectId ? `Mode Edit: ID ${editingProjectId}` : 'Tambah Baru'}
+                            </div>
                             <input type="text" style={styles.input} placeholder="Nama Project..." required value={projectName} onChange={e => setProjectName(e.target.value)} />
                             <textarea style={styles.textarea} placeholder="Deskripsi Project..." required value={projectDesc} onChange={e => setProjectDesc(e.target.value)} />
-                            <button type="submit" style={styles.btnPrimary}>Tambah Project</button>
+                            <div style={{display: 'flex', gap: '8px'}}>
+                                <button type="submit" style={styles.btnPrimary}>{editingProjectId ? 'Simpan Perubahan' : 'Tambah Project'}</button>
+                                {editingProjectId && <button type="button" onClick={() => { setProjectName(''); setProjectDesc(''); setEditingProjectId(null); }} style={{...styles.btnDelete, backgroundColor: '#6B7280'}}>Batal</button>}
+                            </div>
                         </form>
 
                         <div style={styles.listContainer}>
@@ -112,25 +179,34 @@ const MainApp = () => {
                                         <strong style={{color: '#1F2937'}}>{p.name}</strong>
                                         <p style={styles.listSubtext}>{p.description} <span style={styles.idTag}>ID: {p.id}</span></p>
                                     </div>
-                                    <button onClick={() => handleDeleteProject(p.id)} style={styles.btnDelete}>Hapus</button>
+                                    <div style={{display: 'flex', gap: '6px'}}>
+                                        <button onClick={() => startEditProject(p)} style={{...styles.btnPrimary, padding: '4px 8px', fontSize: '12px', backgroundColor: '#F59E0B'}}>Edit</button>
+                                        <button onClick={() => handleDeleteProject(p.id)} style={styles.btnDelete}>Hapus</button>
+                                    </div>
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    {/* KOLOM KANAN: MANAGEMENT TASK (BERELASI) */}
+                    {/* MODUL TASK RELASIONAL */}
                     <div style={styles.sectionCard}>
                         <h2 style={styles.sectionTitle}>Modul Task (Relasional)</h2>
-                        <form onSubmit={handleCreateTask} style={styles.form}>
+                        <form onSubmit={handleSaveTask} style={styles.form}>
+                            <div style={{fontSize: '13px', fontWeight: 'bold', color: '#10B981'}}>
+                                {editingTaskId ? `Mode Edit: ID ${editingTaskId}` : 'Tambah Baru'}
+                            </div>
                             <select style={styles.input} required value={selectedProjectId} onChange={e => setSelectedProjectId(e.target.value)}>
-                                <option value="">-- Tempelkan ke Project Mana? --</option>
+                                <option value="">-- Pilih Relasi Project --</option>
                                 {projects.map(p => (
                                     <option key={p.id} value={p.id}>{p.name}</option>
                                 ))}
                             </select>
                             <input type="text" style={styles.input} placeholder="Nama Tugas / Task..." required value={taskTitle} onChange={e => setTaskTitle(e.target.value)} />
                             <textarea style={styles.textarea} placeholder="Detail Instruksi Task..." required value={taskDesc} onChange={e => setTaskDesc(e.target.value)} />
-                            <button type="submit" style={styles.btnSuccess}>Tambah Task Baru</button>
+                            <div style={{display: 'flex', gap: '8px'}}>
+                                <button type="submit" style={styles.btnSuccess}>{editingTaskId ? 'Simpan Perubahan Task' : 'Tambah Task Baru'}</button>
+                                {editingTaskId && <button type="button" onClick={() => { setTaskTitle(''); setTaskDesc(''); setSelectedProjectId(''); setEditingTaskId(null); }} style={{...styles.btnDelete, backgroundColor: '#6B7280'}}>Batal</button>}
+                            </div>
                         </form>
 
                         <div style={styles.listContainer}>
@@ -143,7 +219,10 @@ const MainApp = () => {
                                             <p style={styles.listSubtext}>{t.description}</p>
                                             <span style={styles.projectBadge}>Project: {parentProject ? parentProject.name : `ID ${t.projectId}`}</span>
                                         </div>
-                                        <button onClick={() => handleDeleteTask(t.id)} style={styles.btnDelete}>Hapus</button>
+                                        <div style={{display: 'flex', gap: '6px'}}>
+                                            <button onClick={() => startEditTask(t)} style={{...styles.btnPrimary, padding: '4px 8px', fontSize: '12px', backgroundColor: '#F59E0B'}}>Edit</button>
+                                            <button onClick={() => handleDeleteTask(t.id)} style={styles.btnDelete}>Hapus</button>
+                                        </div>
                                     </div>
                                 );
                             })}
@@ -156,7 +235,7 @@ const MainApp = () => {
 };
 
 const styles = {
-    container: { minHeight: '100vh', backgroundColor: '#F3F4F6', fontFamily: "'Inter', sans-serif" },
+    container: { minHeight: '100vh', backgroundColor: '#F3F4F6', fontFamily: "sans-serif" },
     header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 40px', height: '70px', backgroundColor: '#FFFFFF', borderBottom: '1px solid #E5E7EB' },
     logo: { fontSize: '22px', fontWeight: '700', margin: 0, color: '#1F2937' },
     userProfile: { display: 'flex', alignItems: 'center', gap: '20px' },
@@ -171,7 +250,7 @@ const styles = {
     textarea: { padding: '10px 14px', fontSize: '14px', borderRadius: '6px', border: '1px solid #D1D5DB', backgroundColor: '#F9FAFB', outline: 'none', height: '60px', resize: 'none' },
     btnPrimary: { padding: '10px', fontSize: '14px', fontWeight: '600', color: '#FFFFFF', backgroundColor: '#4F46E5', border: 'none', borderRadius: '6px', cursor: 'pointer' },
     btnSuccess: { padding: '10px', fontSize: '14px', fontWeight: '600', color: '#FFFFFF', backgroundColor: '#10B981', border: 'none', borderRadius: '6px', cursor: 'pointer' },
-    btnDelete: { padding: '4px 10px', fontSize: '12px', fontWeight: '600', color: '#FFFFFF', backgroundColor: '#EF4444', border: 'none', borderRadius: '4px', cursor: 'pointer' },
+    btnDelete: { padding: '6px 10px', fontSize: '12px', fontWeight: '600', color: '#FFFFFF', backgroundColor: '#EF4444', border: 'none', borderRadius: '4px', cursor: 'pointer' },
     listContainer: { display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid #E5E7EB', paddingTop: '20px' },
     listItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px', backgroundColor: '#F9FAFB', borderRadius: '8px', border: '1px solid #E5E7EB' },
     listSubtext: { margin: '4px 0', fontSize: '13px', color: '#6B7280' },
