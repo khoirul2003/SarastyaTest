@@ -2,26 +2,37 @@ import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AuthPage } from './pages/AuthPage';
 import { projectService } from './services/projectService';
+import { taskService } from './services/taskService';
 
 const MainApp = () => {
     const { isAuthenticated, username, logout } = useAuth();
-    const [projects, setProjects] = useState([]);
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-
     
+    
+    const [projects, setProjects] = useState([]);
+    const [projectName, setProjectName] = useState('');
+    const [projectDesc, setProjectDesc] = useState('');
+    
+    
+    const [tasks, setTasks] = useState([]);
+    const [taskTitle, setTaskTitle] = useState('');
+    const [taskDesc, setTaskDesc] = useState('');
+    const [selectedProjectId, setSelectedProjectId] = useState('');
+
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+
     useEffect(() => {
         if (isAuthenticated) {
-            fetchProjects();
+            loadAllData();
         }
     }, [isAuthenticated]);
 
-    const fetchProjects = async () => {
+    const loadAllData = async () => {
         try {
-            const data = await projectService.getAll();
-            setProjects(data);
+            const projData = await projectService.getAll();
+            const taskData = await taskService.getAll();
+            setProjects(projData);
+            setTasks(taskData);
         } catch (err) {
             setError(err.message);
         }
@@ -29,34 +40,47 @@ const MainApp = () => {
 
     const handleCreateProject = async (e) => {
         e.preventDefault();
-        setLoading(true);
-        setError('');
         try {
-            await projectService.create({ name, description });
-            setName('');
-            setDescription('');
-            fetchProjects(); 
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
+            await projectService.create({ name: projectName, description: projectDesc });
+            setProjectName('');
+            setProjectDesc('');
+            loadAllData();
+        } catch (err) { setError(err.message); }
+    };
+
+    const handleCreateTask = async (e) => {
+        e.preventDefault();
+        if (!selectedProjectId) {
+            alert('Pilih project terlebih dahulu!');
+            return;
         }
+        try {
+            await taskService.create({
+                title: taskTitle,
+                description: taskDesc,
+                isCompleted: false,
+                projectId: parseInt(selectedProjectId)
+            });
+            setTaskTitle('');
+            setTaskDesc('');
+            setSelectedProjectId('');
+            loadAllData();
+        } catch (err) { setError(err.message); }
     };
 
     const handleDeleteProject = async (id) => {
-        if (window.confirm('Apakah Anda yakin ingin menghapus project ini?')) {
-            try {
-                await projectService.delete(id);
-                fetchProjects(); 
-            } catch (err) {
-                alert(err.message);
-            }
+        if (window.confirm('Hapus project ini?')) {
+            try { await projectService.delete(id); loadAllData(); } catch (err) { alert(err.message); }
         }
     };
 
-    if (!isAuthenticated) {
-        return <AuthPage />;
-    }
+    const handleDeleteTask = async (id) => {
+        if (window.confirm('Hapus task ini?')) {
+            try { await taskService.delete(id); loadAllData(); } catch (err) { alert(err.message); }
+        }
+    };
+
+    if (!isAuthenticated) return <AuthPage />;
 
     return (
         <div style={styles.container}>
@@ -71,61 +95,59 @@ const MainApp = () => {
             <main style={styles.main}>
                 {error && <div style={styles.errorBadge}>⚠️ {error}</div>}
 
-                <div style={styles.grid}>
-                    {/* KIRI: Form Tambah Project */}
-                    <div style={styles.card}>
-                        <h3 style={styles.cardTitle}>Buat Project Baru</h3>
+                <div style={styles.workspaceGrid}>
+                    {/* KOLOM KIRI: MANAGEMENT PROJECT */}
+                    <div style={styles.sectionCard}>
+                        <h2 style={styles.sectionTitle}>Modul Project</h2>
                         <form onSubmit={handleCreateProject} style={styles.form}>
-                            <div style={styles.inputGroup}>
-                                <label style={styles.label}>Nama Project</label>
-                                <input 
-                                    type="text" 
-                                    style={styles.input} 
-                                    placeholder="Nama project..." 
-                                    required 
-                                    value={name} 
-                                    onChange={e => setName(e.target.value)} 
-                                />
-                            </div>
-                            <div style={styles.inputGroup}>
-                                <label style={styles.label}>Deskripsi</label>
-                                <textarea 
-                                    style={{...styles.input, height: '80px', resize: 'none'}} 
-                                    placeholder="Penjelasan singkat project..." 
-                                    required 
-                                    value={description} 
-                                    onChange={e => setDescription(e.target.value)} 
-                                />
-                            </div>
-                            <button type="submit" disabled={loading} style={styles.button}>
-                                {loading ? 'Menyimpan...' : 'Tambah Project'}
-                            </button>
+                            <input type="text" style={styles.input} placeholder="Nama Project..." required value={projectName} onChange={e => setProjectName(e.target.value)} />
+                            <textarea style={styles.textarea} placeholder="Deskripsi Project..." required value={projectDesc} onChange={e => setProjectDesc(e.target.value)} />
+                            <button type="submit" style={styles.btnPrimary}>Tambah Project</button>
                         </form>
+
+                        <div style={styles.listContainer}>
+                            {projects.map(p => (
+                                <div key={p.id} style={styles.listItem}>
+                                    <div>
+                                        <strong style={{color: '#1F2937'}}>{p.name}</strong>
+                                        <p style={styles.listSubtext}>{p.description} <span style={styles.idTag}>ID: {p.id}</span></p>
+                                    </div>
+                                    <button onClick={() => handleDeleteProject(p.id)} style={styles.btnDelete}>Hapus</button>
+                                </div>
+                            ))}
+                        </div>
                     </div>
 
-                    {/* KANAN: Daftar Project */}
-                    <div style={styles.card}>
-                        <h3 style={styles.cardTitle}>Daftar Project Anda</h3>
-                        {projects.length === 0 ? (
-                            <p style={styles.emptyText}>Belum ada project yang terdaftar. Silakan buat di form sebelah kiri.</p>
-                        ) : (
-                            <div style={styles.projectList}>
-                                {projects.map((proj) => (
-                                    <div key={proj.id} style={styles.projectItem}>
-                                        <div>
-                                            <h4 style={styles.projectName}>{proj.name}</h4>
-                                            <p style={styles.projectDesc}>{proj.description}</p>
-                                        </div>
-                                        <button 
-                                            onClick={() => handleDeleteProject(proj.id)} 
-                                            style={styles.deleteButton}
-                                        >
-                                            Hapus
-                                        </button>
-                                    </div>
+                    {/* KOLOM KANAN: MANAGEMENT TASK (BERELASI) */}
+                    <div style={styles.sectionCard}>
+                        <h2 style={styles.sectionTitle}>Modul Task (Relasional)</h2>
+                        <form onSubmit={handleCreateTask} style={styles.form}>
+                            <select style={styles.input} required value={selectedProjectId} onChange={e => setSelectedProjectId(e.target.value)}>
+                                <option value="">-- Tempelkan ke Project Mana? --</option>
+                                {projects.map(p => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
                                 ))}
-                            </div>
-                        )}
+                            </select>
+                            <input type="text" style={styles.input} placeholder="Nama Tugas / Task..." required value={taskTitle} onChange={e => setTaskTitle(e.target.value)} />
+                            <textarea style={styles.textarea} placeholder="Detail Instruksi Task..." required value={taskDesc} onChange={e => setTaskDesc(e.target.value)} />
+                            <button type="submit" style={styles.btnSuccess}>Tambah Task Baru</button>
+                        </form>
+
+                        <div style={styles.listContainer}>
+                            {tasks.map(t => {
+                                const parentProject = projects.find(p => p.id === t.projectId);
+                                return (
+                                    <div key={t.id} style={styles.listItem}>
+                                        <div>
+                                            <strong style={{color: '#1F2937'}}>{t.title}</strong>
+                                            <p style={styles.listSubtext}>{t.description}</p>
+                                            <span style={styles.projectBadge}>Project: {parentProject ? parentProject.name : `ID ${t.projectId}`}</span>
+                                        </div>
+                                        <button onClick={() => handleDeleteTask(t.id)} style={styles.btnDelete}>Hapus</button>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
                 </div>
             </main>
@@ -140,22 +162,22 @@ const styles = {
     userProfile: { display: 'flex', alignItems: 'center', gap: '20px' },
     welcomeText: { fontSize: '14px', color: '#4B5563' },
     logoutButton: { padding: '6px 12px', fontSize: '13px', fontWeight: '600', color: '#DC2626', backgroundColor: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: '6px', cursor: 'pointer' },
-    main: { padding: '40px', maxWidth: '1200px', margin: '0 auto' },
-    grid: { display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '30px', alignItems: 'start' },
-    card: { padding: '24px', backgroundColor: '#FFFFFF', borderRadius: '12px', border: '1px solid #E5E7EB', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)' },
-    cardTitle: { margin: '0 0 20px 0', fontSize: '16px', fontWeight: '700', color: '#1F2937' },
-    form: { display: 'flex', flexDirection: 'column', gap: '15px' },
-    inputGroup: { display: 'flex', flexDirection: 'column', gap: '6px' },
-    label: { fontSize: '13px', fontWeight: '600', color: '#374151' },
-    input: { padding: '10px 14px', fontSize: '14px', borderRadius: '6px', border: '1px solid #D1D5DB', backgroundColor: '#F9FAFB', outline: 'none', boxSizing: 'border-box' },
-    button: { padding: '10px', fontSize: '14px', fontWeight: '600', color: '#FFFFFF', backgroundColor: '#4F46E5', border: 'none', borderRadius: '6px', cursor: 'pointer' },
-    errorBadge: { padding: '12px', marginBottom: '20px', fontSize: '13px', color: '#991B1B', backgroundColor: '#FEE2E2', borderRadius: '8px', border: '1px solid #FCA5A5' },
-    emptyText: { fontSize: '14px', color: '#6B7280', textAlign: 'center', marginTop: '20px' },
-    projectList: { display: 'flex', flexDirection: 'column', gap: '12px' },
-    projectItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: '#F9FAFB', borderRadius: '8px', border: '1px solid #E5E7EB' },
-    projectName: { margin: '0 0 4px 0', fontSize: '15px', fontWeight: '600', color: '#1F2937' },
-    projectDesc: { margin: 0, fontSize: '13px', color: '#6B7280' },
-    deleteButton: { padding: '6px 12px', fontSize: '12px', fontWeight: '600', color: '#FFFFFF', backgroundColor: '#EF4444', border: 'none', borderRadius: '4px', cursor: 'pointer' }
+    main: { padding: '40px', maxWidth: '1300px', margin: '0 auto' },
+    workspaceGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px' },
+    sectionCard: { padding: '24px', backgroundColor: '#FFFFFF', borderRadius: '12px', border: '1px solid #E5E7EB', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)' },
+    sectionTitle: { margin: '0 0 20px 0', fontSize: '18px', fontWeight: '700', color: '#1F2937' },
+    form: { display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' },
+    input: { padding: '10px 14px', fontSize: '14px', borderRadius: '6px', border: '1px solid #D1D5DB', backgroundColor: '#F9FAFB', outline: 'none' },
+    textarea: { padding: '10px 14px', fontSize: '14px', borderRadius: '6px', border: '1px solid #D1D5DB', backgroundColor: '#F9FAFB', outline: 'none', height: '60px', resize: 'none' },
+    btnPrimary: { padding: '10px', fontSize: '14px', fontWeight: '600', color: '#FFFFFF', backgroundColor: '#4F46E5', border: 'none', borderRadius: '6px', cursor: 'pointer' },
+    btnSuccess: { padding: '10px', fontSize: '14px', fontWeight: '600', color: '#FFFFFF', backgroundColor: '#10B981', border: 'none', borderRadius: '6px', cursor: 'pointer' },
+    btnDelete: { padding: '4px 10px', fontSize: '12px', fontWeight: '600', color: '#FFFFFF', backgroundColor: '#EF4444', border: 'none', borderRadius: '4px', cursor: 'pointer' },
+    listContainer: { display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid #E5E7EB', paddingTop: '20px' },
+    listItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px', backgroundColor: '#F9FAFB', borderRadius: '8px', border: '1px solid #E5E7EB' },
+    listSubtext: { margin: '4px 0', fontSize: '13px', color: '#6B7280' },
+    idTag: { fontSize: '11px', color: '#9CA3AF', backgroundColor: '#E5E7EB', padding: '2px 6px', borderRadius: '4px', marginLeft: '6px' },
+    projectBadge: { display: 'inline-block', marginTop: '6px', fontSize: '11px', fontWeight: '600', color: '#4F46E5', backgroundColor: '#EEF2FF', padding: '2px 8px', borderRadius: '12px' },
+    errorBadge: { padding: '12px', marginBottom: '20px', fontSize: '13px', color: '#991B1B', backgroundColor: '#FEE2E2', borderRadius: '8px', border: '1px solid #FCA5A5' }
 };
 
 function App() {
